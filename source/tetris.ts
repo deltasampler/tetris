@@ -71,7 +71,7 @@ export function tetris_new(grid_size: vec2_t, cell_size: vec2_t): tetris_t {
     tetris.has_swapped = false;
     tetris.lock_delay = tetris.lock_timer = 1.0;
 
-    const padding = 0.1;
+    const padding = 0.05;
     const padded_cell_size = vec2n_adds(cell_size, padding);
     const total_size = vec2n_mul(grid_size, padded_cell_size);
     const total_hs = vec2n_muls(total_size, 0.5);

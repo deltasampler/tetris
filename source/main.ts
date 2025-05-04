@@ -3,7 +3,7 @@ import {cam2_compute_proj, cam2_compute_view, cam2_new} from "@cl/camera/cam2.ts
 import {io_init, io_kb_key_down, kb_event_t} from "@engine/io.ts";
 import {obb_rdata_build, obb_rdata_instance, obb_rdata_new, obb_rend_build, obb_rend_init, obb_rend_render} from "@engine/obb_rend.ts";
 import {vec4} from "@cl/math/vec4.ts";
-import {vec2} from "@cl/math/vec2.ts";
+import {vec2, vec2n_mul} from "@cl/math/vec2.ts";
 import {tetris_move, tetris_new, tetris_rotate, tetris_reset, tetris_lock, tetris_store, CELL_STATE, tetris_check_move} from "./tetris.ts";
 import {UT, gui_canvas, gui_collapsing_header, gui_reload_component, gui_render, gui_text, gui_window, gui_window_grid, gui_window_layout, unit} from "@gui/gui.ts";
 
@@ -32,13 +32,18 @@ gui_render(root, document.body);
 const canvas_el = canvas.canvas_el;
 const gl = gl_init(canvas_el);
 
-const camera = cam2_new();
-camera.scale = 40;
-
 io_init();
 
-const tetris = tetris_new(vec2(10, 20), vec2(2.0));
+const tetris = tetris_new(vec2(10, 20), vec2(1.0));
 tetris_reset(tetris);
+
+const total_size = vec2n_mul(tetris.grid_size, tetris.cell_size);
+const max = Math.max(total_size[0], total_size[1]);
+const min = Math.min(canvas_el.width, canvas_el.height);
+const buffer = 2;
+
+const camera = cam2_new();
+camera.scale = min * 2.0 / (max + buffer);
 
 const obb_rdata = obb_rdata_new();
 obb_rdata_build(obb_rdata, tetris.len);
@@ -89,7 +94,6 @@ setInterval(() => {
 
     if (!tetris_check_move(tetris, vec2(0, 1), 0)) {
         tetris.lock_timer -= 0.1;
-        console.log(tetris.lock_timer)
 
         if (tetris.lock_timer <= 0.0) {
             tetris_lock(tetris);
@@ -123,7 +127,7 @@ function render(): void {
             0,
             cell.state === CELL_STATE.EMPTY ? vec4(10, 10, 10, 255) : vec4(cell.color[0], cell.color[1], cell.color[2], 255),
             cell.state === CELL_STATE.EMPTY ? vec4(50, 50, 50, 255) : vec4(cell.color[0] / 2, cell.color[1] / 2, cell.color[2] / 2, 255),
-            cell.state === CELL_STATE.EMPTY ? 0.1 : 0.5
+            cell.state === CELL_STATE.EMPTY ? 0.1 : 0.2
         );
     }
 
