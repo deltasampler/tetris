@@ -56,6 +56,8 @@ export class tetris_t {
     has_swapped: boolean;
     lock_delay: number;
     lock_timer: number;
+    score: number;
+    is_paused: boolean;
 };
 
 export function tetris_new(grid_size: vec2_t, cell_size: vec2_t): tetris_t {
@@ -69,17 +71,29 @@ export function tetris_new(grid_size: vec2_t, cell_size: vec2_t): tetris_t {
     tetris.piece = piece_new(tetris.polyominos[0], vec2(), 0);
     tetris.stored = null;
     tetris.has_swapped = false;
-    tetris.lock_delay = tetris.lock_timer = 1.0;
+    tetris.lock_delay = tetris.lock_timer = 2.0;
+    tetris.score = 0;
+    tetris.is_paused = false;
+
+    tetris_reload(tetris);
+
+    return tetris;
+}
+
+export function tetris_reload(tetris: tetris_t): void {
+    tetris.len = tetris.grid_size[0] * tetris.grid_size[1];
 
     const padding = 0.05;
-    const padded_cell_size = vec2n_adds(cell_size, padding);
-    const total_size = vec2n_mul(grid_size, padded_cell_size);
+    const padded_cell_size = vec2n_adds(tetris.cell_size, padding);
+    const total_size = vec2n_mul(tetris.grid_size, padded_cell_size);
     const total_hs = vec2n_muls(total_size, 0.5);
     const cell_hs = vec2n_muls(padded_cell_size, 0.5);
 
+    tetris.cells.length = 0;
+
     for (let i = 0; i < tetris.len; i += 1) {
-        const x = i % grid_size[0];
-        const y = -Math.floor(i / grid_size[0]);
+        const x = i % tetris.grid_size[0];
+        const y = -Math.floor(i / tetris.grid_size[0]);
         const position = vec2(
             x * padded_cell_size[0] - total_hs[0] + cell_hs[0],
             y * padded_cell_size[1] + total_hs[1] - cell_hs[1]
@@ -87,8 +101,6 @@ export function tetris_new(grid_size: vec2_t, cell_size: vec2_t): tetris_t {
 
         tetris.cells.push(cell_new(CELL_STATE.EMPTY, position, vec3()));
     }
-
-    return tetris;
 }
 
 export function tetris_check_move(tetris: tetris_t, delta: vec2_t, delta_rot: number): boolean {
@@ -201,7 +213,7 @@ export function tetris_spawn(tetris: tetris_t, polyomino: polyomino_t): void {
     vec2_set(tetris.piece.position, Math.floor(tetris.grid_size[0] / 2 - polyomino.size[0] / 2), 0);
 
     if (!tetris_check_move(tetris, vec2(), 0)) {
-        tetris_reset(tetris);
+        tetris.is_paused = true;
 
         return;
     }
@@ -294,6 +306,8 @@ export function tetris_resolve(tetris: tetris_t): void {
                     vec3_copy(cell_curr.color, cell_up.color);
                 }
             }
+
+            tetris.score += tetris.grid_size[0];
         }
     }
 }
@@ -306,6 +320,8 @@ export function tetris_reset(tetris: tetris_t): void {
 
     tetris.poly_index = wrap(tetris.poly_index + 1, tetris.polyominos.length);
     tetris_spawn(tetris, tetris.polyominos[tetris.poly_index]);
+    tetris.is_paused = false;
+    tetris.score = 0;
 }
 
 export function tetris_lock(tetris: tetris_t): void {
