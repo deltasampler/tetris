@@ -130,39 +130,50 @@ io_kb_key_down(function(event: kb_event_t): void {
     }
 });
 
-let frames = 0;
+let last_time = performance.now();
+let move_timer = 0;
+let drop_timer = 0;
+const move_interval = 0.1;
+const drop_interval = 0.1;
 
 function update() {
+    const now = performance.now();
+    const dt = (now - last_time) / 1000.0; // delta time in seconds
+    last_time = now;
+
     cam2_compute_proj(camera, canvas_el.width, canvas_el.height);
     cam2_compute_view(camera);
 
-    if (frames % 6 === 0 && !tetris.is_paused) {
-        if (io_key_down("ArrowLeft")) {
-            tetris_move(tetris, vec2(-1, 0));
-        }
+    if (!tetris.is_paused) {
+        move_timer += dt;
+        drop_timer += dt;
 
-        if (io_key_down("ArrowRight")) {
-            tetris_move(tetris, vec2(1, 0));
-        }
-
-        if (io_key_down("ArrowDown")) {
-            tetris_move(tetris, vec2(0, 1));
-        }
-    }
-
-    if (frames % 6 === 0 && !tetris.is_paused) {
-        tetris_move(tetris, vec2(0, 1));
-
-        if (!tetris_check_move(tetris, vec2(0, 1), 0)) {
-            tetris.lock_timer -= 0.1;
-
-            if (tetris.lock_timer <= 0.0) {
-                tetris_lock(tetris);
+        if (move_timer >= move_interval) {
+            if (io_key_down("ArrowLeft")) {
+                tetris_move(tetris, vec2(-1, 0));
+            } else if (io_key_down("ArrowRight")) {
+                tetris_move(tetris, vec2(1, 0));
+            } else if (io_key_down("ArrowDown")) {
+                tetris_move(tetris, vec2(0, 1));
             }
+
+            move_timer = 0;
+        }
+
+        if (drop_timer >= drop_interval) {
+            tetris_move(tetris, vec2(0, 1));
+
+            if (!tetris_check_move(tetris, vec2(0, 1), 0)) {
+                tetris.lock_timer -= drop_timer;
+
+                if (tetris.lock_timer <= 0.0) {
+                    tetris_lock(tetris);
+                }
+            }
+
+            drop_timer = 0;
         }
     }
-
-    frames += 1;
 }
 
 gl.enable(gl.BLEND)
