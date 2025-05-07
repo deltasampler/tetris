@@ -56,7 +56,9 @@ io_init();
 const config = {
     width: 10,
     height: 20,
-    pack: 0
+    pack: 0,
+    move_interval: 0.1,
+    gravity_interval: 0.1,
 }
 
 const packs = [
@@ -134,9 +136,7 @@ io_kb_key_down(function(event: kb_event_t): void {
 
 let last_time = performance.now();
 let move_timer = 0;
-let drop_timer = 0;
-const move_interval = 0.1;
-const drop_interval = 0.1;
+let gravity_timer = 0;
 
 function update() {
     const now = performance.now();
@@ -148,9 +148,9 @@ function update() {
 
     if (!tetris.is_paused) {
         move_timer += dt;
-        drop_timer += dt;
+        gravity_timer += dt;
 
-        if (move_timer >= move_interval) {
+        if (move_timer >= config.move_interval) {
             if (io_key_down("ArrowLeft")) {
                 tetris_move(tetris, vec2(-1, 0));
             } else if (io_key_down("ArrowRight")) {
@@ -162,18 +162,18 @@ function update() {
             move_timer = 0;
         }
 
-        if (drop_timer >= drop_interval) {
+        if (gravity_timer >= config.gravity_interval) {
             tetris_move(tetris, vec2(0, 1));
 
             if (!tetris_check_move(tetris, vec2(0, 1), 0)) {
-                tetris.lock_timer -= drop_timer;
+                tetris.lock_timer -= gravity_timer;
 
                 if (tetris.lock_timer <= 0.0) {
                     tetris_lock(tetris);
                 }
             }
 
-            drop_timer = 0;
+            gravity_timer = 0;
         }
     }
 }
@@ -295,6 +295,9 @@ const general_ch = gui_collapsing_header(left, "General");
 gui_slider_number(general_ch, "Width", gs_object(config, "width"), 1, 1, 100);
 gui_slider_number(general_ch, "Width", gs_object(config, "height"), 1, 1, 100);
 gui_select(general_ch, "Pack", gs_object(config, "pack"), ["Tetromino", "Pentomino"], [0, 1]);
+gui_slider_number(general_ch, "Move Interval", gs_object(config, "move_interval"), 0.01, 0.01, 1.0);
+gui_slider_number(general_ch, "Gravity Interval", gs_object(config, "gravity_interval"), 0.01, 0.01, 1.0);
+gui_slider_number(general_ch, "Lock Interval", gs_object(tetris, "lock_delay"), 0.01, 0.01, 10.0);
 
 gui_button(general_ch, "Reload", function() {
     reload();
