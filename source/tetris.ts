@@ -1,9 +1,8 @@
 import {index2, wrap} from "@cl/math/math.ts";
 import {vec2_t, vec2, vec2n_copy, vec2n_mul, vec2n_muls, vec2n_adds, vec2m_add, vec2n_add, vec2_set} from "@cl/math/vec2.ts";
-import {vec3, vec3_copy, vec3_zero} from "@cl/math/vec3.ts";
-import {polyomino_t} from "./polyomino.ts";
+import {vec3, vec3_copy, vec3_zero, vec3_t, vec3n_copy} from "@cl/math/vec3.ts";
+import {polyomino_rotate, polyomino_t} from "./polyomino.ts";
 import {tetromino_pack} from "./tetromino.ts";
-import {vec3_t, vec3n_copy} from "@cl/math/vec3.ts";
 
 // cell
 export enum CELL_STATE {
@@ -58,6 +57,9 @@ export class tetris_t {
     lock_timer: number;
     score: number;
     is_paused: boolean;
+    padding: number;
+    padded_cell_size: vec2_t;
+    total_size: vec2_t;
 };
 
 export function tetris_new(grid_size: vec2_t, cell_size: vec2_t): tetris_t {
@@ -74,6 +76,7 @@ export function tetris_new(grid_size: vec2_t, cell_size: vec2_t): tetris_t {
     tetris.lock_delay = tetris.lock_timer = 2.0;
     tetris.score = 0;
     tetris.is_paused = false;
+    tetris.padding = 0.05;
 
     tetris_reload(tetris);
 
@@ -82,75 +85,48 @@ export function tetris_new(grid_size: vec2_t, cell_size: vec2_t): tetris_t {
 
 export function tetris_reload(tetris: tetris_t): void {
     tetris.len = tetris.grid_size[0] * tetris.grid_size[1];
-
-    const padding = 0.05;
-    const padded_cell_size = vec2n_adds(tetris.cell_size, padding);
-    const total_size = vec2n_mul(tetris.grid_size, padded_cell_size);
-    const total_hs = vec2n_muls(total_size, 0.5);
-    const cell_hs = vec2n_muls(padded_cell_size, 0.5);
-
+    tetris.padded_cell_size = vec2n_adds(tetris.cell_size, tetris.padding);
+    tetris.total_size = vec2n_mul(tetris.grid_size, tetris.padded_cell_size);
     tetris.cells.length = 0;
+
+    const total_hs = vec2n_muls(tetris.total_size, 0.5);
+    const cell_hs = vec2n_muls(tetris.padded_cell_size, 0.5);
 
     for (let i = 0; i < tetris.len; i += 1) {
         const x = i % tetris.grid_size[0];
         const y = -Math.floor(i / tetris.grid_size[0]);
         const position = vec2(
-            x * padded_cell_size[0] - total_hs[0] + cell_hs[0],
-            y * padded_cell_size[1] + total_hs[1] - cell_hs[1]
+            x * tetris.padded_cell_size[0] - total_hs[0] + cell_hs[0],
+            y * tetris.padded_cell_size[1] + total_hs[1] - cell_hs[1]
         )
 
         tetris.cells.push(cell_new(CELL_STATE.EMPTY, position, vec3()));
     }
 }
 
-export function tetris_check_move(tetris: tetris_t, delta: vec2_t, delta_rot: number): boolean {
+export function tetris_check_move(tetris: tetris_t, delta_pos: vec2_t, delta_rot: number): boolean {
     const piece = tetris.piece;
     const polyomino = piece.polyomino;
-    const position = vec2n_add(piece.position, delta);
+    const position = vec2n_add(piece.position, delta_pos);
     const rotation = (piece.rotation + delta_rot) % 4;
 
     for (let x = 0; x < polyomino.size[0]; x += 1) {
         for (let y = 0; y < polyomino.size[1]; y += 1) {
-            let rx = 0, ry = 0;
+            const i = index2(x, y, polyomino.size[0]);
 
-            switch (rotation % 4) {
-                case 0:
-                    rx = x; ry = y;
+            if (!polyomino.cells[i]) continue;
 
-                    break;
-                case 1:
-                    rx = polyomino.size[1] - 1 - y; ry = x;
+            const [rx, ry] = polyomino_rotate(polyomino, x, y, rotation);
+            const px = position[0] + rx, py = position[1] + ry;
 
-                    break;
-                case 2:
-                    rx = polyomino.size[0] - 1 - x; ry = polyomino.size[1] - 1 - y;
-
-                    break;
-                case 3:
-                    rx = y; ry = polyomino.size[0] - 1 - x;
-
-                    break;
-            }
-
-            const i = y * polyomino.size[0] + x;
-            const fill = polyomino.cells[i];
-
-            if (!fill) continue;
-
-            const gx = rx + position[0];
-            const gy = ry + position[1];
-
-            if (gx < 0 || gx >= tetris.grid_size[0] || gy < 0 || gy >= tetris.grid_size[1]) {
+            if (px < 0 || px >= tetris.grid_size[0] || py >= tetris.grid_size[1]) {
                 return false;
             }
 
-            const j = index2(gx, gy, tetris.grid_size[0]);
-
-            if (j >= tetris.len) return false;
-
+            const j = index2(px, py, tetris.grid_size[0]);
             const cell = tetris.cells[j];
 
-            if (cell.state === CELL_STATE.LOCKED) {
+            if (cell && cell.state === CELL_STATE.LOCKED) {
                 return false;
             }
         }
@@ -167,33 +143,18 @@ export function tetris_fill_piece(tetris: tetris_t, state: CELL_STATE): void {
 
     for (let x = 0; x < polyomino.size[0]; x += 1) {
         for (let y = 0; y < polyomino.size[1]; y += 1) {
-            let rx = 0, ry = 0;
-
-            switch (rotation % 4) {
-                case 0:
-                    rx = x; ry = y;
-
-                    break;
-                case 1:
-                    rx = polyomino.size[1] - 1 - y; ry = x;
-
-                    break;
-                case 2:
-                    rx = polyomino.size[0] - 1 - x; ry = polyomino.size[1] - 1 - y;
-
-                    break;
-                case 3:
-                    rx = y; ry = polyomino.size[0] - 1 - x;
-
-                    break;
-            }
+            const [rx, ry] = polyomino_rotate(polyomino, x, y, rotation);
 
             const i = y * polyomino.size[0] + x;
             const fill = polyomino.cells[i];
 
             if (!fill) continue;
 
-            const j = index2(wrap(rx + position[0], tetris.grid_size[0]), wrap(ry + position[1], tetris.grid_size[1]), tetris.grid_size[0]);
+            const j = index2(rx + position[0], ry + position[1], tetris.grid_size[0]);
+
+            if (j < 0 || j >= tetris.len) {
+                continue;
+            }
 
             const cell = tetris.cells[j];
             cell.state = state;
@@ -210,27 +171,7 @@ export function tetris_fill_piece(tetris: tetris_t, state: CELL_STATE): void {
 export function tetris_spawn(tetris: tetris_t, polyomino: polyomino_t): void {
     const piece = tetris.piece;
     piece.polyomino = polyomino;
-    vec2_set(tetris.piece.position, Math.floor(tetris.grid_size[0] / 2 - polyomino.size[0] / 2), 0);
-
-    if (!tetris_check_move(tetris, vec2(), 0)) {
-        tetris.is_paused = true;
-
-        return;
-    }
-
-    tetris_fill_piece(tetris, CELL_STATE.MOVING);
-}
-
-export function tetris_move(tetris: tetris_t, delta: vec2_t): void {
-    if (!tetris_check_move(tetris, delta, 0)) {
-        return;
-    }
-
-    const piece = tetris.piece;
-
-    tetris_fill_piece(tetris, CELL_STATE.EMPTY);
-
-    vec2m_add(piece.position, delta);
+    vec2_set(tetris.piece.position, Math.floor(tetris.grid_size[0] / 2 - polyomino.size[0] / 2), -piece.polyomino.size[1] - 1);
 
     tetris_fill_piece(tetris, CELL_STATE.MOVING);
 }
@@ -248,6 +189,16 @@ export const ROTATION_OFFSETS: vec2_t[] = [
     vec2(0, -2),
     vec2(0, -3)
 ];
+
+export function tetris_move(tetris: tetris_t, delta: vec2_t): void {
+    if (!tetris_check_move(tetris, delta, 0)) {
+        return;
+    }
+
+    const piece = tetris.piece;
+
+    vec2m_add(piece.position, delta);
+}
 
 export function tetris_rotate(tetris: tetris_t, delta: number): void {
     let index = -1;
@@ -269,12 +220,8 @@ export function tetris_rotate(tetris: tetris_t, delta: number): void {
     const piece = tetris.piece;
     const offset = ROTATION_OFFSETS[index];
 
-    tetris_fill_piece(tetris, CELL_STATE.EMPTY);
-
     vec2m_add(piece.position, offset);
     piece.rotation = wrap(piece.rotation + delta, 4);
-
-    tetris_fill_piece(tetris, CELL_STATE.MOVING);
 }
 
 export function tetris_resolve(tetris: tetris_t): void {
@@ -327,6 +274,13 @@ export function tetris_reset(tetris: tetris_t): void {
 export function tetris_lock(tetris: tetris_t): void {
     while (tetris_check_move(tetris, vec2(0, 1), 0)) {
         tetris_move(tetris, vec2(0, 1));
+    }
+
+    // game over
+    if (tetris.piece.position[1] < 0) {
+        tetris.is_paused = true;
+
+        return;
     }
 
     tetris_fill_piece(tetris, CELL_STATE.LOCKED);

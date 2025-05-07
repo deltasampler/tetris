@@ -3,11 +3,12 @@ import {cam2_compute_proj, cam2_compute_view, cam2_new} from "@cl/camera/cam2.ts
 import {io_init, io_kb_key_down, io_key_down, kb_event_t} from "@engine/io.ts";
 import {obb_rdata_build, obb_rdata_instance, obb_rdata_new, obb_rend_build, obb_rend_init, obb_rend_render} from "@engine/obb_rend.ts";
 import {vec4} from "@cl/math/vec4.ts";
-import {vec2, vec2n_adds, vec2n_mul} from "@cl/math/vec2.ts";
+import {vec2, vec2n_mul, vec2n_muls} from "@cl/math/vec2.ts";
 import {tetris_move, tetris_new, tetris_rotate, tetris_reset, tetris_lock, tetris_store, CELL_STATE, tetris_check_move, tetris_reload} from "./tetris.ts";
 import {UT, gs_object, gui_button, gui_canvas, gui_collapsing_header, gui_reload_component, gui_render, gui_select, gui_slider_number, gui_text, gui_window, gui_window_grid, gui_window_layout, unit} from "@gui/gui.ts";
 import {pentomino_pack} from "./pentomino.ts";
-import { tetromino_pack } from "./tetromino.ts";
+import {tetromino_pack} from "./tetromino.ts";
+import {polyomino_rotate} from "./polyomino.ts";
 
 const root = gui_window(null);
 gui_window_grid(
@@ -40,7 +41,7 @@ overlay_el.style.height = "100%";
 overlay_el.style.fontSize = "32px";
 overlay_el.style.color = "#ffffff";
 overlay_el.style.padding = "16px";
-overlay_el.style.textAlign = "center";
+overlay_el.style.textAlign = "left";
 overlay_el.style.fontFamily = "monospace";
 right.ref_el.append(overlay_el);
 
@@ -70,9 +71,10 @@ tetris_reset(tetris);
 const camera = cam2_new();
 
 function set_camera_scale() {
-    const total_size = vec2n_mul(tetris.grid_size, vec2n_adds(tetris.cell_size, 0.05));
-    const max = Math.max(total_size[0], total_size[1]);
+    const offset = 5;
+    const max = Math.max(tetris.total_size[0], tetris.total_size[1] + tetris.padded_cell_size[1] * (offset + 2));
     const min = Math.min(canvas_el.width, canvas_el.height);
+    camera.position[1] = tetris.padded_cell_size[1] * offset / 2.0;
 
     camera.scale = min * 2.0 / max;
 }
@@ -138,7 +140,7 @@ const drop_interval = 0.1;
 
 function update() {
     const now = performance.now();
-    const dt = (now - last_time) / 1000.0; // delta time in seconds
+    const dt = (now - last_time) / 1000.0;
     last_time = now;
 
     cam2_compute_proj(camera, canvas_el.width, canvas_el.height);
@@ -185,24 +187,79 @@ function render(): void {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+    const piece = tetris.piece;
+    const polyomino = piece.polyomino;
+    const position = piece.position;
+    const rotation = piece.rotation;
+    let index = 0;
+
+    for (let x = 0; x < polyomino.size[0]; x += 1) {
+        for (let y = 0; y < polyomino.size[1]; y += 1) {
+            const [rx, ry] = polyomino_rotate(polyomino, x, y, rotation);
+            const i = y * polyomino.size[0] + x;
+            const fill = polyomino.cells[i];
+
+            if (!fill) continue;
+
+            const total_size = vec2n_mul(tetris.grid_size, tetris.padded_cell_size);
+            const total_hs = vec2n_muls(total_size, 0.5);
+            const cell_hs = vec2n_muls(tetris.padded_cell_size, 0.5);
+
+            const pos = vec2(
+                (position[0] + rx) * tetris.padded_cell_size[0] - total_hs[0] + cell_hs[0],
+                (-position[1] - ry) * tetris.padded_cell_size[1] + total_hs[1] - cell_hs[1]
+            )
+
+            obb_rdata_instance(
+                obb_rdata2,
+                index,
+                pos,
+                tetris.cell_size,
+                0,
+                0,
+                vec4(polyomino.color[0], polyomino.color[1], polyomino.color[2], 255),
+                vec4(polyomino.color[0] / 2, polyomino.color[1] / 2, polyomino.color[2] / 2, 255),
+                0.2
+            );
+
+            index++;
+        }
+    }
+
+    obb_rdata2.len = index;
 
     for (let i = 0; i < tetris.len; i += 1) {
         const cell = tetris.cells[i];
 
-        obb_rdata_instance(
-            obb_rdata,
-            i,
-            cell.position,
-            tetris.cell_size,
-            0,
-            0,
-            cell.state === CELL_STATE.EMPTY ? vec4(10, 10, 10, 255) : vec4(cell.color[0], cell.color[1], cell.color[2], 255),
-            cell.state === CELL_STATE.EMPTY ? vec4(50, 50, 50, 255) : vec4(cell.color[0] / 2, cell.color[1] / 2, cell.color[2] / 2, 255),
-            cell.state === CELL_STATE.EMPTY ? 0.1 : 0.2
-        );
+        if (cell.state === CELL_STATE.LOCKED) {
+            obb_rdata_instance(
+                obb_rdata,
+                i,
+                cell.position,
+                tetris.cell_size,
+                0,
+                0,
+                vec4(cell.color[0], cell.color[1], cell.color[2], 255),
+                vec4(cell.color[0] / 2, cell.color[1] / 2, cell.color[2] / 2, 255),
+                0.2
+            );
+        } else {
+            obb_rdata_instance(
+                obb_rdata,
+                i,
+                cell.position,
+                tetris.cell_size,
+                0,
+                0,
+                vec4(10, 10, 10, 255),
+                vec4(50, 50, 50, 255),
+                0.1
+            );
+        }
     }
 
     obb_rend_render(obb_rdata, camera);
+    obb_rend_render(obb_rdata2, camera);
 
     if (!tetris.is_paused) {
         overlay_el.innerHTML = `Score: ${ tetris.score }`;
